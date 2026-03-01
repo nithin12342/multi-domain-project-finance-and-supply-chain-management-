@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: auth-service
+  datasource:
+    url: jdbc:h2:mem:auth_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: 
+    driver-class-name: org.h2.Driver
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    database-platform: org.hibernate.dialect.H2Dialect
+  
+server:
+  port: 8081
+
+app:
+  jwtSecret: 9a4f2c8d3b7a1e6f4g5h8i0j2k5m8n0p3q6r9s2t5u8v1w4x7y0z3a6b9c2d5e8f  # Weak default for dev, should beEnv
+  jwtExpirationInMs: 604800000 # 7 days

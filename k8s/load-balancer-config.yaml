@@ -1,0 +1,198 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-load-balancer-config
+  namespace: supplychain
+data:
+  nginx.conf: |
+    upstream auth_backend {
+        least_conn;
+        server auth-service:8080 weight=3;
+        server auth-service-secondary:8080 weight=1;
+    }
+
+    upstream finance_backend {
+        least_conn;
+        server finance-service:8080 weight=5;
+        server finance-service-replica:8080 weight=2;
+    }
+
+    upstream blockchain_backend {
+        ip_hash;  # Sticky sessions for blockchain operations
+        server blockchain-service:8080 weight=2;
+        server blockchain-service-replica:8080 weight=1;
+    }
+
+    upstream ai_backend {
+        least_conn;
+        server ai-service:5000 weight=3;
+        server ai-service-replica:5000 weight=2;
+    }
+
+    upstream defi_backend {
+        least_conn;
+        server defi-service:8080 weight=2;
+        server defi-service-replica:8080 weight=1;
+    }
+
+    upstream iot_backend {
+        least_conn;
+        server iot-service:8080 weight=4;
+        server iot-service-replica:8080 weight=2;
+    }
+
+    upstream frontend_backend {
+        least_conn;
+        server frontend-service:3000 weight=3;
+        server frontend-service-replica:3000 weight=2;
+    }
+
+    server {
+        listen 80;
+        server_name supplychain-platform.com;
+
+        # Security headers
+        add_header X-Content-Type-Options nosniff;
+        add_header X-Frame-Options DENY;
+        add_header X-XSS-Protection "1; mode=block";
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+        # Health check endpoint
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+
+        # Metrics endpoint for monitoring
+        location /metrics {
+            stub_status on;
+            access_log off;
+            allow 10.0.0.0/8;
+            allow 172.16.0.0/12;
+            allow 192.168.0.0/16;
+            deny all;
+        }
+
+        # Auth service routing
+        location /api/auth/ {
+            proxy_pass http://auth_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            # Timeouts
+            proxy_connect_timeout 10s;
+            proxy_send_timeout 30s;
+            proxy_read_timeout 30s;
+
+            # Buffering
+            proxy_buffering on;
+            proxy_buffer_size 4k;
+            proxy_buffers 8 4k;
+        }
+
+        # Finance service routing
+        location /api/finance/ {
+            proxy_pass http://finance_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            # Enhanced timeouts for financial operations
+            proxy_connect_timeout 15s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+        }
+
+        # Blockchain service routing
+        location /api/blockchain/ {
+            proxy_pass http://blockchain_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            # Blockchain specific timeouts
+            proxy_connect_timeout 20s;
+            proxy_send_timeout 120s;
+            proxy_read_timeout 120s;
+        }
+
+        # AI service routing
+        location /api/ai/ {
+            proxy_pass http://ai_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            # AI processing timeouts
+            proxy_connect_timeout 30s;
+            proxy_send_timeout 300s;
+            proxy_read_timeout 300s;
+
+            # Large request body for ML models
+            client_max_body_size 100M;
+        }
+
+        # DeFi service routing
+        location /api/defi/ {
+            proxy_pass http://defi_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            proxy_connect_timeout 15s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+        }
+
+        # IoT service routing
+        location /api/iot/ {
+            proxy_pass http://iot_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            # Real-time IoT timeouts
+            proxy_connect_timeout 5s;
+            proxy_send_timeout 10s;
+            proxy_read_timeout 10s;
+
+            # Enable WebSocket for real-time data
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+
+        # Frontend routing
+        location / {
+            proxy_pass http://frontend_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            # Frontend specific optimizations
+            proxy_connect_timeout 10s;
+            proxy_send_timeout 30s;
+            proxy_read_timeout 30s;
+        }
+
+        # Rate limiting
+        limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+        limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/s;
+
+        location /api/ {
+            limit_req zone=api burst=20 nodelay;
+        }
+
+        location /api/auth/ {
+            limit_req zone=auth burst=10 nodelay;
+        }
+    }

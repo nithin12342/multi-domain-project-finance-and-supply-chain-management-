@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: supplychain
+  labels:
+    name: supplychain
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: supplychain-quota
+  namespace: supplychain
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 4Gi
+    limits.cpu: "8"
+    limits.memory: 8Gi
+    persistentvolumeclaims: "10"
+    services.loadbalancers: "2"
+---
+apiVersion: v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: supplychain
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+apiVersion: v1
+kind: NetworkPolicy
+metadata:
+  name: allow-internal-traffic
+  namespace: supplychain
+spec:
+  podSelector: {}
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: supplychain
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: supplychain
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: supplychain
+  name: service-reader
+rules:
+- apiGroups: [""]
+  resources: ["services", "endpoints"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: read-services
+  namespace: supplychain
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: supplychain
+roleRef:
+  kind: Role
+  name: service-reader
+  apiGroup: rbac.authorization.k8s.io

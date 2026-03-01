@@ -1,0 +1,128 @@
+version: '3.8'
+
+services:
+  # Frontend Services
+  web-app:
+    build:
+      context: .
+      dockerfile: frontend/web-app/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - API_URL=http://api-gateway:8080
+
+  # Backend Services
+  # api-gateway - Service implementation missing, disabled for now
+  # api-gateway:
+  #   build: ./backend/gateway
+  #   ports:
+  #     - "8080:8080"
+  #   depends_on:
+  #     - auth-service
+  #     - finance-service
+  #     - supplychain-service
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: backend/auth-service/Dockerfile
+    environment:
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+    ports:
+      - "8081:8081"
+    depends_on:
+      - postgres
+      - redis
+
+  finance-service:
+    build:
+      context: .
+      dockerfile: backend/finance-service/Dockerfile
+    environment:
+      - DB_HOST=postgres
+      - DB_USERNAME=finance_user
+      - DB_PASSWORD=finance_password
+      - BLOCKCHAIN_SERVICE_URL=http://blockchain-service:8545
+    ports:
+      - "8083:8083" # Changed from default to avoid conflict
+    depends_on:
+      - postgres
+      - mongodb
+      - blockchain-service
+
+  supplychain-service:
+    build:
+      context: .
+      dockerfile: backend/supplychain-service/Dockerfile
+    environment:
+      - DB_HOST=postgres
+      - DB_USERNAME=supplychain_user
+      - DB_PASSWORD=supplychain_password
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - mongodb
+
+  blockchain-service:
+    build:
+      context: .
+      dockerfile: backend/blockchain-service/Dockerfile
+    ports:
+      - "8545:8545"
+
+  ai-service:
+    build:
+      context: .
+      dockerfile: backend/ai-service/Dockerfile
+    environment:
+      - DB_HOST=postgres
+      - DB_USERNAME=ai_user
+      - DB_PASSWORD=ai_password
+    ports:
+      - "8082:8082"
+    volumes:
+      - ./ai-ml/models:/app/models
+    depends_on:
+      - postgres
+
+  # Databases
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: supplychain_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  mongodb:
+    image: mongo:5
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:6
+    volumes:
+      - redis_data:/data
+
+  # Infrastructure
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./devops/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres_data:
+  mongo_data:
+  redis_data:
