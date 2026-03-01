@@ -1,0 +1,39 @@
+{
+  "input_dim": 10,
+  "output_dim": 1,
+  "n_rounds": 10,
+  "local_epochs": 5,
+  "model_path": "federated_supply_chain_model.pth",
+  "clients": [
+    {
+      "client_id": "supplier_1",
+      "data_path": "/data/supplier_1_data.csv",
+      "target_column": "demand",
+      "learning_rate": 0.001
+    },
+    {
+      "client_id": "supplier_2",
+      "data_path": "/data/supplier_2_data.csv",
+      "target_column": "demand",
+      "learning_rate": 0.001
+    },
+    {
+      "client_id": "manufacturer_1",
+      "data_path": "/data/manufacturer_1_data.csv",
+      "target_column": "quality_score",
+      "learning_rate": 0.001
+    },
+    {
+      "client_id": "distributor_1",
+      "data_path": "/data/distributor_1_data.csv",
+      "target_column": "delivery_time",
+      "learning_rate": 0.001
+    },
+    {
+      "client_id": "retailer_1",
+      "data_path": "/data/retailer_1_data.csv",
+      "target_column": "sales",
+      "learning_rate": 0.001
+    }
+  ]
+}

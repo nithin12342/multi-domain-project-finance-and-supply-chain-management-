@@ -5,6 +5,9 @@ import com.app.iot.model.SensorData;
 import com.app.iot.repository.DeviceRepository;
 import com.app.iot.repository.SensorDataRepository;
 import org.eclipse.paho.client.mqttv3.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -15,6 +18,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class IoTService implements MqttCallback {
+
+    private static final Logger logger = LoggerFactory.getLogger(IoTService.class);
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
     private DeviceRepository deviceRepository;
@@ -108,12 +114,12 @@ public class IoTService implements MqttCallback {
 
     private void processDeviceStatus(String deviceId, String status) {
         IoTDevice device = deviceRepository.findById(deviceId)
-            .orElseGet(() -> createNewDevice(deviceId));
-        
+                .orElseGet(() -> createNewDevice(deviceId));
+
         device.setStatus(status);
         device.setLastUpdated(System.currentTimeMillis());
         deviceRepository.save(device);
-        
+
         if ("OFFLINE".equals(status)) {
             connectedDevices.remove(deviceId);
         } else {
@@ -144,16 +150,45 @@ public class IoTService implements MqttCallback {
     }
 
     private boolean isAnomalyDetected(SensorData sensorData) {
-        // Implement anomaly detection logic
+        if (sensorData.getReadings() == null)
+            return false;
+
+        Double temp = sensorData.getReadings().get("temperature");
+        if (temp != null && (temp > 35.0 || temp < -10.0))
+            return true;
+
+        Double humidity = sensorData.getReadings().get("humidity");
+        if (humidity != null && humidity > 95.0)
+            return true;
+
+        Double vibration = sensorData.getReadings().get("vibration");
+        if (vibration != null && vibration > 10.5)
+            return true;
+
         return false;
     }
 
     private void sendAlert(String deviceId, SensorData sensorData) {
-        // Implement alert notification logic
+        try {
+            String topic = "devices/" + deviceId + "/alerts";
+            String alertPayload = objectMapper.writeValueAsString(sensorData);
+            MqttMessage message = new MqttMessage(alertPayload.getBytes());
+            message.setQos(1);
+            mqttClient.publish(topic, message);
+            logger.warn("ANOMALY DETECTED: Alert dispatched to topic {} for device {}", topic, deviceId);
+        } catch (Exception e) {
+            logger.error("Failed to send alert for device: {}", deviceId, e);
+        }
     }
 
     private SensorData parseSensorData(String payload) {
-        // Implement sensor data parsing logic
-        return new SensorData();
+        try {
+            return objectMapper.readValue(payload, SensorData.class);
+        } catch (Exception e) {
+            logger.error("Failed to parse sensor data payload: {}", payload, e);
+            SensorData empty = new SensorData();
+            empty.setTimestamp(System.currentTimeMillis());
+            return empty;
+        }
     }
 }

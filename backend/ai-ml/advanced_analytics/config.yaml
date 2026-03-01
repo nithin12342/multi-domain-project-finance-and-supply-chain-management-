@@ -1,0 +1,179 @@
+# Advanced Analytics Pipeline Configuration
+
+# General settings
+general:
+  default_forecast_horizon: 12
+  data_quality_threshold: 0.8
+  enable_real_time_processing: true
+  batch_processing_interval_minutes: 60
+
+# Causal Inference Settings
+causal_inference:
+  default_confidence_level: 0.95
+  max_conditioning_variables: 10
+  enable_propensity_score_matching: true
+  enable_instrumental_variables: true
+  enable_mediation_analysis: true
+  
+  # Treatment effect estimation
+  treatment_effect_methods:
+    - difference_in_means
+    - regression_adjustment
+    - matching
+    - instrumental_variables
+  
+  # Common supply chain causal relationships
+  supply_chain_relationships:
+    supplier:
+      treatment_variables:
+        - supplier_reliability
+        - lead_time
+        - quality_score
+      outcome_variables:
+        - delivery_performance
+        - cost_efficiency
+        - risk_score
+    inventory:
+      treatment_variables:
+        - safety_stock_level
+        - reorder_point
+        - review_period
+      outcome_variables:
+        - stockout_rate
+        - holding_cost
+        - service_level
+    pricing:
+      treatment_variables:
+        - price
+        - discount_rate
+        - promotional_spend
+      outcome_variables:
+        - demand
+        - revenue
+        - market_share
+
+# Time Series Forecasting Settings
+time_series_forecasting:
+  default_methods:
+    - exponential_smoothing
+    - arima
+    - ensemble
+    
+  exponential_smoothing:
+    default_alpha: 0.3
+    default_beta: 0.3
+    default_gamma: 0.3
+    seasonal_periods: 12
+  
+  arima:
+    max_order_p: 5
+    max_order_d: 2
+    max_order_q: 5
+    default_order: [1, 1, 1]
+  
+  ensemble:
+    default_weights: [0.4, 0.4, 0.2]
+    method_selection_criteria: aic
+  
+  evaluation:
+    metrics:
+      - mse
+      - rmse
+      - mae
+      - mape
+      - mase
+    validation_split: 0.2
+
+# Data Processing Settings
+data_processing:
+  missing_value_handling:
+    method: forward_fill
+    max_consecutive_missing: 10
+  
+  outlier_detection:
+    method: iqr
+    multiplier: 1.5
+    treatment: cap
+  
+  feature_engineering:
+    enable_lag_features: true
+    max_lag_periods: 12
+    enable_rolling_features: true
+    rolling_windows: [7, 14, 30]
+    enable_seasonal_features: true
+
+# Model Management
+model_management:
+  auto_retraining:
+    enabled: true
+    schedule: daily
+    performance_threshold: 0.1  # Retrain if performance drops by 10%
+  
+  model_versioning:
+    enabled: true
+    max_versions: 5
+    retention_days: 365
+  
+  model_storage:
+    location: /var/lib/ai-ml/models/advanced-analytics
+    encryption: true
+
+# Performance Settings
+performance:
+  parallel_processing:
+    enabled: true
+    max_workers: 4
+  caching:
+    enabled: true
+    cache_size: 1000
+    ttl_hours: 24
+  memory_management:
+    enable_gc: true
+    max_memory_mb: 1024
+
+# Integration Settings
+integration:
+  supply_chain_systems:
+    erp_integration: true
+    wms_integration: true
+    tms_integration: true
+  data_sources:
+    - internal_databases
+    - external_apis
+    - iot_sensors
+    - market_data
+  real_time_streams:
+    enable_kafka: false
+    enable_websockets: true
+
+# Security Settings
+security:
+  data_encryption:
+    at_rest: true
+    in_transit: true
+  access_control:
+    require_authentication: true
+    role_based_access: true
+  audit_logging:
+    enabled: true
+    log_level: info
+
+# Monitoring and Alerting
+monitoring:
+  enable_performance_monitoring: true
+  enable_data_quality_monitoring: true
+  alerting:
+    enable_email_alerts: true
+    enable_slack_alerts: false
+    performance_degradation_threshold: 0.2
+    data_quality_alert_threshold: 0.7
+
+# Reporting
+reporting:
+  auto_generate_reports: true
+  report_formats:
+    - json
+    - csv
+    - pdf
+  report_frequency: daily
+  dashboard_integration: true

@@ -14,11 +14,16 @@ import java.util.List;
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     Page<Invoice> findByStatus(InvoiceStatus status, Pageable pageable);
+
     long countByStatus(InvoiceStatus status);
-    
+
+    long countBySupplier(String supplier);
+
+    long countBySupplierAndStatus(String supplier, InvoiceStatus status);
+
     @Query("SELECT AVG(i.financingAmount) FROM Invoice i WHERE i.financingAmount IS NOT NULL")
     BigDecimal getAverageFinancingAmount();
-    
+
     @Query("SELECT COUNT(i) as count, MONTH(i.dueDate) as month FROM Invoice i WHERE i.dueDate IS NOT NULL GROUP BY MONTH(i.dueDate)")
     List<Object[]> getMonthlyVolume();
 }

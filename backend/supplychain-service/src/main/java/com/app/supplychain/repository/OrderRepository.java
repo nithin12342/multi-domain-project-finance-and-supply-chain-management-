@@ -11,4 +11,9 @@ import java.util.List;
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findByStatus(OrderStatus status, Pageable pageable);
+
+    long countByStatus(OrderStatus status);
+
+    @org.springframework.data.jpa.repository.Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o")
+    java.math.BigDecimal calculateTotalOrderRevenue();
 }

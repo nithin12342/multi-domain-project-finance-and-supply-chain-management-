@@ -40,26 +40,26 @@ public class AnalyticsService {
     public Map<String, Object> getSupplyChainMetrics() {
         logger.info("Fetching supply chain metrics");
         Map<String, Object> metrics = new HashMap<>();
-        
+
         try {
             // Inventory metrics
             metrics.put("totalInventoryItems", getTotalInventoryCount());
             metrics.put("lowStockItems", getLowStockItems());
             metrics.put("inventoryByLocation", getInventoryByLocation());
-            
+
             // Shipment metrics
             metrics.put("activeShipments", getActiveShipmentsCount());
             metrics.put("shipmentsByStatus", getShipmentsByStatus());
             metrics.put("averageDeliveryTime", calculateAverageDeliveryTime());
-            
+
             // Order metrics
             metrics.put("pendingOrders", getPendingOrdersCount());
             metrics.put("ordersFulfillmentRate", calculateOrdersFulfillmentRate());
-            
+
             // AI-enhanced metrics
             metrics.put("demandForecasts", getRecentDemandForecasts());
             metrics.put("supplierRiskAssessments", getRecentRiskAssessments());
-            
+
             logger.info("Successfully fetched supply chain metrics");
             return metrics;
         } catch (Exception e) {
@@ -83,20 +83,20 @@ public class AnalyticsService {
     public Map<String, BigDecimal> getFinancialMetrics() {
         logger.info("Fetching financial metrics");
         Map<String, BigDecimal> financialMetrics = new HashMap<>();
-        
+
         try {
             // Calculate total inventory value
             BigDecimal totalInventoryValue = calculateTotalInventoryValue();
             financialMetrics.put("totalInventoryValue", totalInventoryValue);
-            
+
             // Calculate shipping costs
             BigDecimal totalShippingCosts = calculateTotalShippingCosts();
             financialMetrics.put("totalShippingCosts", totalShippingCosts);
-            
+
             // Calculate order revenue
             BigDecimal orderRevenue = calculateOrderRevenue();
             financialMetrics.put("orderRevenue", orderRevenue);
-            
+
             logger.info("Successfully fetched financial metrics");
             return financialMetrics;
         } catch (Exception e) {
@@ -109,12 +109,11 @@ public class AnalyticsService {
         logger.info("Fetching demand forecast for product: {} with period: {}", productId, period);
         try {
             DemandForecastRequest request = new DemandForecastRequest(
-                productId, 
-                LocalDateTime.now(), 
-                LocalDateTime.now().plusDays(30), 
-                period
-            );
-            
+                    productId,
+                    LocalDateTime.now(),
+                    LocalDateTime.now().plusDays(30),
+                    period);
+
             var response = aiServiceClient.predictDemand(request);
             logger.info("Successfully fetched demand forecast for product: {}", productId);
             return response.getData();
@@ -151,9 +150,9 @@ public class AnalyticsService {
     private List<Inventory> getLowStockItems() {
         logger.debug("Fetching low stock items");
         try {
-            // Implementation for getting low stock items
+            List<Inventory> items = inventoryRepository.findByQuantityLessThanEqual(10);
             logger.debug("Successfully fetched low stock items");
-            return null;
+            return items;
         } catch (Exception e) {
             logger.error("Error fetching low stock items", e);
             throw e;
@@ -163,9 +162,13 @@ public class AnalyticsService {
     private Map<String, Integer> getInventoryByLocation() {
         logger.debug("Fetching inventory by location");
         try {
-            // Implementation for getting inventory by location
+            List<Object[]> results = inventoryRepository.countInventoryByLocation();
+            Map<String, Integer> map = new HashMap<>();
+            for (Object[] row : results) {
+                map.put((String) row[0], ((Number) row[1]).intValue());
+            }
             logger.debug("Successfully fetched inventory by location");
-            return null;
+            return map;
         } catch (Exception e) {
             logger.error("Error fetching inventory by location", e);
             throw e;
@@ -175,8 +178,8 @@ public class AnalyticsService {
     private long getActiveShipmentsCount() {
         logger.debug("Calculating active shipments count");
         try {
-            // Implementation for getting active shipments count
-            long count = 0;
+            long count = shipmentRepository
+                    .countByStatusNotIn(List.of(ShipmentStatus.DELIVERED, ShipmentStatus.CANCELLED));
             logger.debug("Active shipments count: {}", count);
             return count;
         } catch (Exception e) {
@@ -188,9 +191,13 @@ public class AnalyticsService {
     private Map<ShipmentStatus, Long> getShipmentsByStatus() {
         logger.debug("Fetching shipments by status");
         try {
-            // Implementation for getting shipments by status
+            List<Object[]> results = shipmentRepository.countShipmentsByStatus();
+            Map<ShipmentStatus, Long> map = new HashMap<>();
+            for (Object[] row : results) {
+                map.put((ShipmentStatus) row[0], ((Number) row[1]).longValue());
+            }
             logger.debug("Successfully fetched shipments by status");
-            return null;
+            return map;
         } catch (Exception e) {
             logger.error("Error fetching shipments by status", e);
             throw e;
@@ -213,8 +220,7 @@ public class AnalyticsService {
     private long getPendingOrdersCount() {
         logger.debug("Calculating pending orders count");
         try {
-            // Implementation for getting pending orders count
-            long count = 0;
+            long count = orderRepository.countByStatus(OrderStatus.PENDING);
             logger.debug("Pending orders count: {}", count);
             return count;
         } catch (Exception e) {
@@ -226,8 +232,9 @@ public class AnalyticsService {
     private double calculateOrdersFulfillmentRate() {
         logger.debug("Calculating orders fulfillment rate");
         try {
-            // Implementation for calculating orders fulfillment rate
-            double rate = 0.0;
+            long delivered = orderRepository.countByStatus(OrderStatus.DELIVERED);
+            long total = orderRepository.count();
+            double rate = total == 0 ? 0.0 : ((double) delivered / total) * 100.0;
             logger.debug("Orders fulfillment rate: {}", rate);
             return rate;
         } catch (Exception e) {
@@ -239,8 +246,9 @@ public class AnalyticsService {
     private BigDecimal calculateTotalInventoryValue() {
         logger.debug("Calculating total inventory value");
         try {
-            // Implementation for calculating total inventory value
-            BigDecimal value = BigDecimal.ZERO;
+            BigDecimal value = inventoryRepository.getTotalInventoryValue();
+            if (value == null)
+                value = BigDecimal.ZERO;
             logger.debug("Total inventory value: {}", value);
             return value;
         } catch (Exception e) {
@@ -252,8 +260,9 @@ public class AnalyticsService {
     private BigDecimal calculateTotalShippingCosts() {
         logger.debug("Calculating total shipping costs");
         try {
-            // Implementation for calculating total shipping costs
-            BigDecimal costs = BigDecimal.ZERO;
+            BigDecimal costs = shipmentRepository.calculateTotalShippingCosts();
+            if (costs == null)
+                costs = BigDecimal.ZERO;
             logger.debug("Total shipping costs: {}", costs);
             return costs;
         } catch (Exception e) {
@@ -265,8 +274,9 @@ public class AnalyticsService {
     private BigDecimal calculateOrderRevenue() {
         logger.debug("Calculating order revenue");
         try {
-            // Implementation for calculating order revenue
-            BigDecimal revenue = BigDecimal.ZERO;
+            BigDecimal revenue = orderRepository.calculateTotalOrderRevenue();
+            if (revenue == null)
+                revenue = BigDecimal.ZERO;
             logger.debug("Order revenue: {}", revenue);
             return revenue;
         } catch (Exception e) {

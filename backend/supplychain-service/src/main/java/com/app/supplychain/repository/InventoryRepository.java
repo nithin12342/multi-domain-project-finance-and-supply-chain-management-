@@ -12,6 +12,11 @@ import java.util.List;
 public interface InventoryRepository extends JpaRepository<Inventory, Long> {
     List<Inventory> findByLocation(String location, Pageable pageable);
 
+    List<Inventory> findByQuantityLessThanEqual(int quantity);
+
+    @org.springframework.data.jpa.repository.Query("SELECT i.location, SUM(i.quantity) FROM Inventory i GROUP BY i.location")
+    List<Object[]> countInventoryByLocation();
+
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.data.jpa.repository.Query("UPDATE Inventory i SET i.quantity = i.quantity - :amount WHERE i.id = :id AND i.quantity >= :amount")
     int deductInventory(@org.springframework.data.repository.query.Param("id") Long id,
