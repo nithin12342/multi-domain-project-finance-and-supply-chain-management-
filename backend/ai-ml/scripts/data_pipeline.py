@@ -102,10 +102,50 @@ def download_datasets():
         
     print("✅ All Datasets Downloaded & Extracted to Local Storage.")
 
-# 4. NASA Continuous-Time Log-Signatures (Rough Path Theory)
-def extract_log_signatures(sensor_tensor, depth=3):
-    with torch.no_grad():
-        return signatory.logsignature(sensor_tensor, depth)
+import scipy.fft
+from scipy.stats import linregress
+
+# 4. NASA Spectral and Temporal Degradation Features
+def extract_spectral_features(engine_data):
+    """Extracts FFT power spectra and EMA slopes for each sensor channel."""
+    # engine_data is numpy array [cycles, sensors]
+    num_cycles, num_sensors = engine_data.shape
+    features = {}
+    
+    for s in range(num_sensors):
+        sensor_series = engine_data[:, s]
+        
+        # --- 1. Fast Fourier Transform (FFT) Power Spectra ---
+        # Extract top 3 dominant frequency amplitudes to capture vibration shifts
+        fft_vals = np.abs(scipy.fft.fft(sensor_series))
+        # Ignore the DC component (index 0) and take the first half (symmetry)
+        half_n = num_cycles // 2
+        if half_n > 1:
+            fft_amplitudes = fft_vals[1:half_n]
+            top_indices = np.argsort(fft_amplitudes)[-3:][::-1] # Top 3
+            for i, idx in enumerate(top_indices):
+                features[f'sensor_{s}_fft_amp_{i+1}'] = fft_amplitudes[idx]
+        else:
+            for i in range(3):
+                features[f'sensor_{s}_fft_amp_{i+1}'] = 0.0
+                
+        # --- 2. Exponential Moving Average (EMA) Slopes ---
+        # Calculate slope of the 10-cycle and 30-cycle EMA to capture degradation acceleration
+        series_obj = pd.Series(sensor_series)
+        ema_10 = series_obj.ewm(span=10, adjust=False).mean().values
+        ema_30 = series_obj.ewm(span=30, adjust=False).mean().values
+        
+        if num_cycles > 1:
+            x = np.arange(num_cycles)
+            slope_10, _, _, _, _ = linregress(x, ema_10)
+            slope_30, _, _, _, _ = linregress(x, ema_30)
+            features[f'sensor_{s}_ema10_slope'] = slope_10
+            features[f'sensor_{s}_ema30_slope'] = slope_30
+        else:
+            features[f'sensor_{s}_ema10_slope'] = 0.0
+            features[f'sensor_{s}_ema30_slope'] = 0.0
+
+    return features
 
 def process_nasa_telemetry():
     print("\n--- Processing NASA IoT Telemetry Logs ---")
@@ -119,59 +159,60 @@ def process_nasa_telemetry():
 
     for file_path in nasa_files:
         filename = os.path.basename(file_path)
-        out_name = f"features_logsig_{filename.replace('.txt', '.csv')}"
+        out_name = f"features_spectral_{filename.replace('.txt', '.csv')}"
         out_path = os.path.join(PROCESSED_DIR, out_name)
         
         if os.path.exists(out_path):
             os.remove(out_path)
             
-        print(f"Streaming {filename} Log-Signatures to NVMe...")
+        print(f"Extracting {filename} FFT Spectra & EMA to NVMe...")
         try:
             df = pd.read_csv(file_path, sep=r'\s+', header=None)
             df = df.dropna(axis=1, how='all')
             engine_ids = df.iloc[:, 0].unique()
             
-            for i, eng_id in enumerate(engine_ids):
-                # Only load the exact required memory segment
+            for eng_id in engine_ids:
+                # Raw sensor data (excluding engine and cycle ID)
                 engine_data = df[df.iloc[:, 0] == eng_id].iloc[:, 2:].values
                 
-                # To prevent C++ Segfaults, downcast precision to 16-bit to halve the memory allocation required during CPU calculus.
-                tensor_data = torch.tensor(engine_data, dtype=torch.float16).unsqueeze(0) 
+                # Extract Memory-Safe Native Python Features
+                row_dict = extract_spectral_features(engine_data)
+                row_dict['engine_id'] = eng_id
                 
-                if tensor_data.shape[1] > 1:
-                    # SAFETY MEASURES: Signatory C++ crashes violently if input has NaNs, Infs, or isn't contiguous in memory
-                    clean_tensor = torch.nan_to_num(tensor_data.float(), nan=0.0, posinf=0.0, neginf=0.0).contiguous()
-                    sig = extract_log_signatures(clean_tensor, depth=2)
-                    sig_array = sig.squeeze(0).numpy()
-                    
-                    row_dict = {f"sig_{j}": float(val) for j, val in enumerate(sig_array)}
-                    row_dict['engine_id'] = eng_id
-                    pd.DataFrame([row_dict]).to_csv(out_path, mode='a', header=not os.path.exists(out_path), index=False)
-                    
-                    # Hard memory termination
-                    del sig, sig_array, row_dict
+                pd.DataFrame([row_dict]).to_csv(out_path, mode='a', header=not os.path.exists(out_path), index=False)
                 
-                del tensor_data, engine_data
-                
-                if i % 5 == 0:
-                    gc.collect()
-                
-            del df
-            gc.collect()
-            print(f"  ✅ Saved {len(engine_ids)} engine signatures locally.")
+            print(f"  ✅ Saved {len(engine_ids)} engine spectra locally.")
             
             # TRIGGER AUTO-SAVE TO GITHUB
-            commit_to_github(out_path, f"NASA {filename}")
+            commit_to_github(out_path, f"NASA Spectra {filename}")
             
         except Exception as e:
             print(f"  ❌ Error: {e}")
 
-# 5. Topology Preprocessing (Betti Numbers via Persistent Homology)
-def extract_betti_numbers(distance_matrix):
-    rips_complex = gudhi.RipsComplex(distance_matrix=distance_matrix, max_edge_length=2.0)
-    simplex_tree = rips_complex.create_simplex_tree(max_dimension=3)
-    simplex_tree.persistence()
-    return simplex_tree.betti_numbers()
+# 5. Topology Preprocessing (Ego-Network Centrality & Community Density)
+def extract_graph_centrality(sub_G):
+    """Extracts mathematically stable graph features (PageRank, Clustering) from a fraud transaction subgraph."""
+    features = {}
+    
+    # Structure 1: PageRank Centrality (identifies central mule nodes)
+    pr = nx.pagerank(sub_G, alpha=0.85, weight='amount')
+    pr_values = list(pr.values())
+    features['pagerank_max'] = np.max(pr_values) if pr_values else 0.0
+    features['pagerank_variance'] = np.var(pr_values) if pr_values else 0.0
+    
+    # Structure 2: Clustering Coefficient (identifies dense triadic laundering loops)
+    clustering = nx.clustering(sub_G, weight='amount')
+    clus_values = list(clustering.values())
+    features['cluster_coeff_avg'] = np.mean(clus_values) if clus_values else 0.0
+    features['cluster_coeff_max'] = np.max(clus_values) if clus_values else 0.0
+    
+    # Structure 3: Component Density (identifies high volume passing through few nodes)
+    num_nodes = sub_G.number_of_nodes()
+    num_edges = sub_G.number_of_edges()
+    features['edge_density'] = num_edges / (num_nodes ** 2 + 1e-5)
+    
+    return features
+
 
 def process_fraud_topology():
     print("\n--- Processing PaySim Fraud Topology ---")
@@ -181,7 +222,7 @@ def process_fraud_topology():
         return
         
     file_path = paysim_files[0]
-    out_path = os.path.join(PROCESSED_DIR, "topological_fraud_features.csv")
+    out_path = os.path.join(PROCESSED_DIR, "structural_fraud_features.csv")
     if os.path.exists(out_path):
         os.remove(out_path)
         
@@ -196,35 +237,20 @@ def process_fraud_topology():
             components = sorted(nx.connected_components(G), key=len, reverse=True)
             
             if components:
+                # Extract the 150 most connected nodes to simulate the core fraud ring potential
                 sub_G = G.subgraph(components[0])
                 nodes = list(sub_G.nodes())[:150] 
                 sub_G = sub_G.subgraph(nodes)
                 
-                dist_matrix = np.zeros((len(nodes), len(nodes)))
-                for i, n1 in enumerate(nodes):
-                    for j, n2 in enumerate(nodes):
-                        if i != j:
-                            if sub_G.has_edge(n1, n2):
-                                dist_matrix[i, j] = 1.0 / (sub_G[n1][n2]['amount'] + 1e-5)
-                            else:
-                                dist_matrix[i, j] = 10.0
+                # Extract Memory-Safe Native Python Features
+                row_dict = extract_graph_centrality(sub_G)
+                row_dict['chunk_id'] = chunk_index
                 
-                dist_matrix = (dist_matrix + dist_matrix.T) / 2
-                np.fill_diagonal(dist_matrix, 0)
-                
-                betti = extract_betti_numbers(dist_matrix)
-                
-                pd.DataFrame([{
-                    "chunk_id": chunk_index,
-                    "betti_0_connected_comps": betti[0] if len(betti) > 0 else 0, 
-                    "betti_1_rings": betti[1] if len(betti) > 1 else 0,
-                    "betti_2_voids": betti[2] if len(betti) > 2 else 0
-                }]).to_csv(out_path, mode='a', header=not os.path.exists(out_path), index=False)
+                pd.DataFrame([row_dict]).to_csv(out_path, mode='a', header=not os.path.exists(out_path), index=False)
                 
             del G, chunk_df
-            gc.collect()
             
-        print("  ✅ Topological Fraud Extraction completely saved locally.")
+        print("  ✅ Structural Fraud Graph Features completely saved locally.")
         
         # TRIGGER AUTO-SAVE TO GITHUB
         commit_to_github(out_path, "PaySim Topology")

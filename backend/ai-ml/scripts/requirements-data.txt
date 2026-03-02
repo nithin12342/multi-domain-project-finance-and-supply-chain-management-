@@ -1,10 +1,6 @@
-torch>=2.0.0
-torchvision
-torchaudio
-signatory
 pandas
 numpy
-gudhi
+scipy
 networkx
 kaggle
 scikit-learn
