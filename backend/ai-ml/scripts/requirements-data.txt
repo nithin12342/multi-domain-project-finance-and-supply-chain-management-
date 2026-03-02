@@ -1,0 +1,12 @@
+torch>=2.0.0
+torchvision
+torchaudio
+signatory
+pandas
+numpy
+gudhi
+networkx
+kaggle
+scikit-learn
+psutil
+pynvml
