@@ -131,21 +131,28 @@ def process_nasa_telemetry():
             df = df.dropna(axis=1, how='all')
             engine_ids = df.iloc[:, 0].unique()
             
-            for eng_id in engine_ids:
-                engine_data = df[df.iloc[:, 0] == eng_id].iloc[:, 2:].values 
-                tensor_data = torch.tensor(engine_data, dtype=torch.float32).unsqueeze(0) 
+            for i, eng_id in enumerate(engine_ids):
+                # Only load the exact required memory segment
+                engine_data = df[df.iloc[:, 0] == eng_id].iloc[:, 2:].values
+                
+                # To prevent C++ Segfaults, downcast precision to 16-bit to halve the memory allocation required during CPU calculus.
+                tensor_data = torch.tensor(engine_data, dtype=torch.float16).unsqueeze(0) 
                 
                 if tensor_data.shape[1] > 1:
-                    sig = extract_log_signatures(tensor_data, depth=2)
+                    sig = extract_log_signatures(tensor_data.float(), depth=2) # Signatory strictly requires float32 or float64.
                     sig_array = sig.squeeze(0).numpy()
-                    del sig
                     
-                    row_dict = {f"sig_{i}": val for i, val in enumerate(sig_array)}
+                    row_dict = {f"sig_{j}": float(val) for j, val in enumerate(sig_array)}
                     row_dict['engine_id'] = eng_id
                     pd.DataFrame([row_dict]).to_csv(out_path, mode='a', header=not os.path.exists(out_path), index=False)
+                    
+                    # Hard memory termination
+                    del sig, sig_array, row_dict
                 
                 del tensor_data, engine_data
-                gc.collect()
+                
+                if i % 5 == 0:
+                    gc.collect()
                 
             del df
             gc.collect()
