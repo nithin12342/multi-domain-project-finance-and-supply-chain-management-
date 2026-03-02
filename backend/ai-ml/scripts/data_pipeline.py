@@ -1,9 +1,10 @@
 """
-AGI-Frontier Supply Chain & Finance: Data Pipeline
+AGI-Frontier Supply Chain & Finance: Auto-GitHub Data Pipeline
 Designed exclusively for GitHub Codespaces (Headless Container Execution)
 """
 
 import os
+import json
 import glob
 import subprocess
 import torch
@@ -13,6 +14,7 @@ import gudhi
 import networkx as nx
 import signatory
 import gc
+from pathlib import Path
 
 # 1. Establish Local Codespace Directory Structure
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../data'))
@@ -28,10 +30,55 @@ for sub in ['m5', 'paysim', 'dataco', 'nasa_cmapss']:
 
 print(f"✅ Local Codespace Data Infrastructure Initialized at: {BASE_DIR}")
 
-# 2. Secure Kaggle Kaggle Download via Subprocess
-# (Assumes ~/.kaggle/kaggle.json exists in the Codespace)
+# 2. Secure Auto-Git Commit System
+def commit_to_github(file_path, dataset_name):
+    """Adds, commits, and pushes a single processed file gracefully to GitHub."""
+    print(f"\n🔄 Auto-Saving {dataset_name} features to GitHub Version Control...")
+    try:
+        # Check if the file is too large for GitHub free tier (100MB limit)
+        file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+        if file_size_mb > 95:
+            print(f"⚠️ Skipping Git Auto-Commit: {file_path} is {file_size_mb:.2f}MB (Approaching 100MB Git limit).")
+            return
+            
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../'))
+        os.chdir(repo_root)
+        
+        # 1. Add file
+        subprocess.run(["git", "add", file_path], check=True)
+        # 2. Commit
+        commit_msg = f"chore(data): auto-save extracted {dataset_name} features"
+        subprocess.run(["git", "commit", "-m", commit_msg], check=False) # Check=False in case there are no changes
+        # 3. Push
+        subprocess.run(["git", "push"], check=True)
+        print(f"✅ Successfully Pushed {dataset_name} to GitHub!")
+    except Exception as e:
+        print(f"❌ Git Auto-Save Failed for {dataset_name}. Error: {e}")
+
+
+# 3. Secure Kaggle Kaggle Configuration
+def configure_kaggle():
+    print("\n--- Configuring Kaggle API Authenticator ---")
+    kaggle_dir = os.path.expanduser("~/.kaggle")
+    os.makedirs(kaggle_dir, exist_ok=True)
+    
+    kaggle_json_path = os.path.join(kaggle_dir, "kaggle.json")
+    
+    creds = {
+        "username": "nithin1234ag",
+        "key": "a4ca19a1a7b1c1fdcff8ed69943901f6"
+    }
+    
+    with open(kaggle_json_path, 'w') as f:
+        json.dump(creds, f)
+        
+    os.chmod(kaggle_json_path, 0o600)
+    print("✅ Kaggle Auto-Authenticator Built (~/.kaggle/kaggle.json)")
+
 def download_datasets():
     print("\n--- Downloading 4 Core Kaggle Datasets ---")
+    configure_kaggle()
+    
     datasets = [
         ("shashwatwork/dataco-smart-supply-chain-for-big-data-analysis", True),
         ("ealaxi/paysim1", True),
@@ -45,9 +92,8 @@ def download_datasets():
         if unzip:
             cmd.append("--unzip")
         print(f"Downloading {ds}...")
-        subprocess.run(cmd, check=False) # check=False ignores permission errors like M5 competition rules
+        subprocess.run(cmd, check=False) 
         
-    # M5 Competition
     print("Downloading M5 Forecasting (Competition)...")
     subprocess.run(["kaggle", "competitions", "download", "-c", "m5-forecasting-accuracy"], check=False)
     if os.path.exists("m5-forecasting-accuracy.zip"):
@@ -56,7 +102,7 @@ def download_datasets():
         
     print("✅ All Datasets Downloaded & Extracted to Local Storage.")
 
-# 3. NASA Continuous-Time Log-Signatures (Rough Path Theory)
+# 4. NASA Continuous-Time Log-Signatures (Rough Path Theory)
 def extract_log_signatures(sensor_tensor, depth=3):
     with torch.no_grad():
         return signatory.logsignature(sensor_tensor, depth)
@@ -101,11 +147,15 @@ def process_nasa_telemetry():
                 
             del df
             gc.collect()
-            print(f"  ✅ Saved {len(engine_ids)} engine signatures.")
+            print(f"  ✅ Saved {len(engine_ids)} engine signatures locally.")
+            
+            # TRIGGER AUTO-SAVE TO GITHUB
+            commit_to_github(out_path, f"NASA {filename}")
+            
         except Exception as e:
             print(f"  ❌ Error: {e}")
 
-# 4. Topology Preprocessing (Betti Numbers via Persistent Homology)
+# 5. Topology Preprocessing (Betti Numbers via Persistent Homology)
 def extract_betti_numbers(distance_matrix):
     rips_complex = gudhi.RipsComplex(distance_matrix=distance_matrix, max_edge_length=2.0)
     simplex_tree = rips_complex.create_simplex_tree(max_dimension=3)
@@ -163,7 +213,11 @@ def process_fraud_topology():
             del G, chunk_df
             gc.collect()
             
-        print("  ✅ Topological Fraud Extraction complete.")
+        print("  ✅ Topological Fraud Extraction completely saved locally.")
+        
+        # TRIGGER AUTO-SAVE TO GITHUB
+        commit_to_github(out_path, "PaySim Topology")
+        
     except Exception as e:
         print(f"  ❌ Error: {e}")
 
@@ -171,4 +225,4 @@ if __name__ == "__main__":
     download_datasets()
     process_nasa_telemetry()
     process_fraud_topology()
-    print("\n🚀 SOTA AI Data Pipeline Finished Successfully!")
+    print("\n🚀 SOTA AI Python Auto-Git Pipeline Finished Successfully!")
