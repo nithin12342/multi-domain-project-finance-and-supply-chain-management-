@@ -139,7 +139,9 @@ def process_nasa_telemetry():
                 tensor_data = torch.tensor(engine_data, dtype=torch.float16).unsqueeze(0) 
                 
                 if tensor_data.shape[1] > 1:
-                    sig = extract_log_signatures(tensor_data.float(), depth=2) # Signatory strictly requires float32 or float64.
+                    # SAFETY MEASURES: Signatory C++ crashes violently if input has NaNs, Infs, or isn't contiguous in memory
+                    clean_tensor = torch.nan_to_num(tensor_data.float(), nan=0.0, posinf=0.0, neginf=0.0).contiguous()
+                    sig = extract_log_signatures(clean_tensor, depth=2)
                     sig_array = sig.squeeze(0).numpy()
                     
                     row_dict = {f"sig_{j}": float(val) for j, val in enumerate(sig_array)}
