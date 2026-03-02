@@ -41,16 +41,16 @@ def commit_to_github(file_path, dataset_name):
             print(f"⚠️ Skipping Git Auto-Commit: {file_path} is {file_size_mb:.2f}MB (Approaching 100MB Git limit).")
             return
             
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../'))
-        os.chdir(repo_root)
+        # The script is in backend/ai-ml/scripts, we need to go up 3 levels to reach the repository root
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
         
         # 1. Add file
-        subprocess.run(["git", "add", file_path], check=True)
+        subprocess.run(["git", "add", file_path], cwd=repo_root, check=True)
         # 2. Commit
         commit_msg = f"chore(data): auto-save extracted {dataset_name} features"
-        subprocess.run(["git", "commit", "-m", commit_msg], check=False) # Check=False in case there are no changes
+        subprocess.run(["git", "commit", "-m", commit_msg], cwd=repo_root, check=False) # Check=False in case there are no changes
         # 3. Push
-        subprocess.run(["git", "push"], check=True)
+        subprocess.run(["git", "push"], cwd=repo_root, check=True)
         print(f"✅ Successfully Pushed {dataset_name} to GitHub!")
     except Exception as e:
         print(f"❌ Git Auto-Save Failed for {dataset_name}. Error: {e}")
