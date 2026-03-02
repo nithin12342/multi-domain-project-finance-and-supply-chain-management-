@@ -138,12 +138,14 @@ def process_nasa_telemetry():
                 if tensor_data.shape[1] > 1:
                     sig = extract_log_signatures(tensor_data, depth=2)
                     sig_array = sig.squeeze(0).numpy()
+                    del sig
                     
                     row_dict = {f"sig_{i}": val for i, val in enumerate(sig_array)}
                     row_dict['engine_id'] = eng_id
                     pd.DataFrame([row_dict]).to_csv(out_path, mode='a', header=not os.path.exists(out_path), index=False)
                 
                 del tensor_data, engine_data
+                gc.collect()
                 
             del df
             gc.collect()
