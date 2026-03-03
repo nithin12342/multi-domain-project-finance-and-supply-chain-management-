@@ -35,7 +35,12 @@ def master_federated_epoch(model, dataloader, optimizer, criterion, epoch, phase
             
         with torch.set_grad_enabled(phase == "Train"):
             outputs = model(inputs)
-            loss = criterion(outputs, labels)
+            
+            # Dimensionality and Type Alignment for BCE Loss
+            if len(outputs.shape) > 1 and outputs.shape[1] == 1:
+                outputs = outputs.squeeze(1)
+            
+            loss = criterion(outputs, labels.float())
             
             if phase == "Train":
                 loss.backward()
