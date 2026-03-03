@@ -13,7 +13,7 @@ def master_federated_epoch(model, dataloader, optimizer, criterion, epoch, phase
     """
     model.train() if phase == "Train" else model.eval()
     
-    all_preds, all_labels = [], []
+    all_preds, all_labels, all_probs = [], [], []
     running_loss = 0.0
     successful_samples, failed_samples = [], []
     
@@ -44,13 +44,16 @@ def master_federated_epoch(model, dataloader, optimizer, criterion, epoch, phase
                 
             # Extract highest probability predictions (Assumes Output is Logits for Classification)
             if len(outputs.shape) > 1 and outputs.shape[1] > 1:
-                _, preds = torch.max(outputs, 1)
+                probs = torch.softmax(outputs, dim=1)
+                _, preds = torch.max(probs, 1)
             else:
                 # Binary Classification Sigmoid output handling
-                preds = (torch.sigmoid(outputs) > 0.5).long().squeeze()
+                probs = torch.sigmoid(outputs).squeeze()
+                preds = (probs > 0.5).long()
                 
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
+            all_probs.extend(probs.cpu().detach().numpy())
             running_loss += loss.item()
             
             # ========== HARD SAMPLE MINING ==========
@@ -74,12 +77,34 @@ def master_federated_epoch(model, dataloader, optimizer, criterion, epoch, phase
             log_hardware_metrics()
             
     # ========== Metrics & Drive Logging ==========
+    import numpy as np
+    from sklearn.metrics import roc_auc_score
+    
     epoch_loss = running_loss / len(dataloader)
     precision, recall, f1, _ = precision_recall_fscore_support(all_labels, all_preds, average='weighted', zero_division=0)
     accuracy = accuracy_score(all_labels, all_preds)
     
+    # Safely compute ROC-AUC
+    try:
+        if len(all_probs) > 0 and len(np.array(all_probs).shape) > 1:
+            auc = roc_auc_score(all_labels, all_probs, multi_class='ovr')
+        else:
+            auc = roc_auc_score(all_labels, all_probs)
+    except Exception:
+        auc = 0.0
+        
+    print(f"\n--- {phase} Epoch {epoch} Metrics ---")
+    print(f"Loss: {epoch_loss:.4f} | Accuracy: {accuracy:.4f} | Precision: {precision:.4f} | Recall: {recall:.4f} | F1: {f1:.4f} | AUC: {auc:.4f}\n")
+    
     # Log to WandB Dashboard and Google Drive fallback log
-    metrics = {f"{phase}_Loss": epoch_loss, f"{phase}_Acc": accuracy, f"{phase}_F1": f1}
+    metrics = {
+        f"{phase}_Loss": epoch_loss, 
+        f"{phase}_Accuracy": accuracy, 
+        f"{phase}_Precision": precision,
+        f"{phase}_Recall": recall,
+        f"{phase}_F1_Score": f1,
+        f"{phase}_AUC": auc
+    }
     wandb.log(metrics)
     save_telemetry_to_drive(metrics, f"epoch_{phase}")
     
