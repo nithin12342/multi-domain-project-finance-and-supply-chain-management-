@@ -1,6 +1,12 @@
 import os
 
 # ---------------------------------------------------------
+# Data Infrastructure (GitHub Repo Backend)
+# ---------------------------------------------------------
+REPO_DIR = '/content/multi-domain-project-finance-and-supply-chain-management-'
+PROCESSED_DIR = os.path.join(REPO_DIR, 'backend/data/processed')
+
+# ---------------------------------------------------------
 # MLOps Infrastructure Directories (Google Drive Backend)
 # ---------------------------------------------------------
 BASE_DIR = '/content/drive/MyDrive/SOTA_Cluster_Shared'
