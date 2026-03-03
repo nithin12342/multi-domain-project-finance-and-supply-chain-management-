@@ -62,9 +62,19 @@ def generate_text_confusion_matrix(y_true, y_pred, phase="Train"):
     with open(file_path, "w") as f:
         f.write(f"=== {phase} Phase Confusion Matrix ===\n")
         f.write(f"Timestamp: {timestamp}\n\n")
-        f.write("Format: Rows=True Labels, Columns=Predicted Labels\n")
+        
+        # Explicitly output TP, TN, FP, FN if Binary Classification
+        if cm.shape == (2, 2):
+            tn, fp, fn, tp = cm.ravel()
+            f.write("Detailed Metrics:\n")
+            f.write(f"tp : {tp}\n")
+            f.write(f"tn : {tn}\n")
+            f.write(f"fp : {fp}\n")
+            f.write(f"fn : {fn}\n\n")
+            
+        f.write("Raw Matrix Format: Rows=True Labels, Columns=Predicted Labels\n")
         f.write(str(cm))
         f.write("\n\n=== Interpretation ===\n")
-        f.write("Diagonal numbers are Correct Predictions. Off-diagonal are Errors.")
+        f.write("tp = True Positive, tn = True Negative, fp = False Positive, fn = False Negative.")
     
     print(f"💾 Saved {phase} Textual Confusion Matrix to: {file_path}")
