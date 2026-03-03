@@ -2,16 +2,19 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 import numpy as np
+from sklearn.preprocessing import StandardScaler
 
 class TabularFeatureDataset(Dataset):
     """
     Universal dataset unloader for the structurally flattened CSV outputs created by data_pipeline.py.
+    Now includes StandardScaler normalization for proper gradient flow.
     """
-    def __init__(self, csv_path, target_col, ignore_cols=None):
+    def __init__(self, csv_path, target_col, ignore_cols=None, scaler=None):
         """
         csv_path: Path to features_spectral_*.csv or structural_fraud_features.csv
         target_col: The exact string name of the column storing the regression/classification target.
         ignore_cols: List of string names indicating metadata columns (like chunk_id or engine_id) to detach from the X tensors.
+        scaler: Optional pre-fitted StandardScaler (for validation set to use training set's statistics).
         """
         self.df = pd.read_csv(csv_path).dropna()
         
@@ -25,8 +28,16 @@ class TabularFeatureDataset(Dataset):
             X_df = X_df.drop(columns=ignore_cols, errors='ignore')
         else:
             self.metadata = np.arange(len(self.df)).astype(str)
-            
-        self.X = X_df.values.astype(np.float32)
+        
+        # Apply StandardScaler normalization
+        self.raw_X = X_df.values.astype(np.float32)
+        if scaler is not None:
+            self.scaler = scaler
+            self.X = self.scaler.transform(self.raw_X).astype(np.float32)
+        else:
+            self.scaler = StandardScaler()
+            self.X = self.scaler.fit_transform(self.raw_X).astype(np.float32)
+
 
     def __len__(self):
         return len(self.X)
