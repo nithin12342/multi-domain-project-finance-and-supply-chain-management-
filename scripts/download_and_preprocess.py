@@ -70,25 +70,47 @@ def download_datasets():
     # the competition rules at https://www.kaggle.com/c/ieee-fraud-detection/rules
     # before the API download will work. Otherwise you'll get a 401 error.
     ieee_dir = os.path.join(RAW_DATA_DIR, 'ieee_fraud')
-    if not os.path.exists(ieee_dir) or not os.listdir(ieee_dir):
+    # Check for actual CSV files, not just empty directory
+    has_ieee_data = (os.path.exists(ieee_dir) and 
+                     any(f.endswith('.csv') for f in os.listdir(ieee_dir) if os.path.isfile(os.path.join(ieee_dir, f))))
+    if not has_ieee_data:
         print("\n📦 Downloading IEEE-CIS Fraud Detection...")
         print("   ⚠️  NOTE: You must accept competition rules first at:")
         print("   https://www.kaggle.com/c/ieee-fraud-detection/rules")
         os.makedirs(ieee_dir, exist_ok=True)
+        
+        # Try competition download first
         result = subprocess.run([
             'kaggle', 'competitions', 'download', '-c', DATASETS['ieee_fraud'],
             '-p', ieee_dir
         ], check=False, capture_output=True, text=True)
-        if result.returncode != 0 or '401' in (result.stderr or ''):
-            print("   ⚠️  IEEE-CIS download failed (likely need to accept rules).")
-            print("   Pipeline will continue with PaySim + DataCo only.")
+        
+        download_ok = (result.returncode == 0 and 
+                       '401' not in (result.stderr or '') and
+                       '403' not in (result.stderr or ''))
+        
+        if not download_ok:
+            # Try alternative: download specific files
+            print("   ⚠️  Competition download failed, trying file download...")
+            for fname in ['train_transaction.csv', 'train_identity.csv']:
+                subprocess.run([
+                    'kaggle', 'competitions', 'download', '-c', DATASETS['ieee_fraud'],
+                    '-f', fname, '-p', ieee_dir
+                ], check=False, capture_output=True, text=True)
+        
+        # Unzip any downloaded files
+        for f in os.listdir(ieee_dir):
+            if f.endswith('.zip'):
+                subprocess.run(['unzip', '-o', os.path.join(ieee_dir, f), '-d', ieee_dir],
+                              capture_output=True, check=False)
+        
+        # Final check
+        csv_files = [f for f in os.listdir(ieee_dir) if f.endswith('.csv')]
+        if csv_files:
+            print(f"   ✅ IEEE-CIS downloaded ({len(csv_files)} CSV files)")
         else:
-            # Unzip
-            for f in os.listdir(ieee_dir):
-                if f.endswith('.zip'):
-                    subprocess.run(['unzip', '-o', os.path.join(ieee_dir, f), '-d', ieee_dir],
-                                  capture_output=True, check=False)
-            print("   ✅ IEEE-CIS downloaded")
+            print("   ⚠️  IEEE-CIS download failed. Pipeline continues with PaySim + DataCo.")
+            print("   📋 To manually download, go to: https://www.kaggle.com/c/ieee-fraud-detection/data")
     else:
         print(f"   ⏭️ IEEE-CIS already exists at {ieee_dir}")
 

@@ -39,16 +39,11 @@ try:
 except ImportError:
     HAS_LOUVAIN = False
 
-try:
-    import esig
-    # esig v1.0 renamed logsig → stream2logsig
-    _esig_logsig_fn = getattr(esig, 'stream2logsig', None) or getattr(esig, 'logsig', None)
-    HAS_ESIG = _esig_logsig_fn is not None
-    if not HAS_ESIG:
-        warnings.warn("esig installed but no logsig/stream2logsig function found.")
-except ImportError:
-    HAS_ESIG = False
-    _esig_logsig_fn = None
+# DISABLED: esig/roughpy 0.2.0 has a C++ bug ("mismatch between number of rows
+# in data and number of indices"). Using statistical fallback for [H] features.
+# Re-enable when roughpy >= 0.3 is released.
+HAS_ESIG = False
+_esig_logsig_fn = None
 
 from feature_config import CFG, FeatureExtractionConfig
 
@@ -138,9 +133,12 @@ class AdvancedFeatureExtractor:
             return {k: 0.0 for k in self._centrality_keys()}
 
         # Betweenness centrality — identifies bridge/bottleneck nodes
+        # k-sampling for large graphs: O(k*(n+m)) instead of O(n*(n+m))
         try:
+            k_sample = min(50, n) if n > 100 else None
             bc = list(nx.betweenness_centrality(G, normalized=True,
-                                                 weight='weight').values())
+                                                 weight='weight',
+                                                 k=k_sample).values())
             feats['betweenness_max']    = float(np.max(bc))
             feats['betweenness_mean']   = float(np.mean(bc))
             feats['betweenness_std']    = float(np.std(bc))
@@ -182,18 +180,22 @@ class AdvancedFeatureExtractor:
             ]})
 
         # Katz centrality — path-weighted global influence
-        try:
-            # Katz alpha must be < 1/spectral_radius
-            A = nx.to_numpy_array(G)
-            spectral_radius = np.max(np.abs(np.linalg.eigvals(A))) + 1e-12
-            alpha = 0.8 / spectral_radius
-            kc = list(nx.katz_centrality_numpy(G, alpha=alpha).values())
-            feats['katz_centrality_max']  = float(np.max(kc))
-            feats['katz_centrality_mean'] = float(np.mean(kc))
-        except Exception:
-            feats.update({k: 0.0 for k in [
-                'katz_centrality_max','katz_centrality_mean'
-            ]})
+        # Skip for large graphs (eigvals is O(n³))
+        if n <= 200:
+            try:
+                A = nx.to_numpy_array(G)
+                spectral_radius = np.max(np.abs(np.linalg.eigvals(A))) + 1e-12
+                alpha = 0.8 / spectral_radius
+                kc = list(nx.katz_centrality_numpy(G, alpha=alpha).values())
+                feats['katz_centrality_max']  = float(np.max(kc))
+                feats['katz_centrality_mean'] = float(np.mean(kc))
+            except Exception:
+                feats.update({k: 0.0 for k in [
+                    'katz_centrality_max','katz_centrality_mean'
+                ]})
+        else:
+            feats['katz_centrality_max']  = 0.0
+            feats['katz_centrality_mean'] = 0.0
 
         return feats
 
