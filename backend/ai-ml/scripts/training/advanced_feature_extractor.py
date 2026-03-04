@@ -41,9 +41,14 @@ except ImportError:
 
 try:
     import esig
-    HAS_ESIG = True
+    # esig v1.0 renamed logsig → stream2logsig
+    _esig_logsig_fn = getattr(esig, 'stream2logsig', None) or getattr(esig, 'logsig', None)
+    HAS_ESIG = _esig_logsig_fn is not None
+    if not HAS_ESIG:
+        warnings.warn("esig installed but no logsig/stream2logsig function found.")
 except ImportError:
     HAS_ESIG = False
+    _esig_logsig_fn = None
 
 from feature_config import CFG, FeatureExtractionConfig
 
@@ -635,7 +640,7 @@ class AdvancedFeatureExtractor:
             path_2d = np.hstack([t, a])  # shape: (T, 2)
 
             # Compute log-signature (more compact than full signature)
-            log_sig = esig.logsig(path_2d, depth)
+            log_sig = _esig_logsig_fn(path_2d, depth)
 
             # Store summary statistics (log-sig can be large)
             feats['log_sig_l2_norm']   = float(np.linalg.norm(log_sig))

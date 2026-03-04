@@ -66,20 +66,29 @@ def download_datasets():
         sys.exit(1)
 
     # Download IEEE-CIS (competition format)
+    # NOTE: IEEE-CIS is a Kaggle COMPETITION dataset. You must first accept
+    # the competition rules at https://www.kaggle.com/c/ieee-fraud-detection/rules
+    # before the API download will work. Otherwise you'll get a 401 error.
     ieee_dir = os.path.join(RAW_DATA_DIR, 'ieee_fraud')
     if not os.path.exists(ieee_dir) or not os.listdir(ieee_dir):
         print("\n📦 Downloading IEEE-CIS Fraud Detection...")
+        print("   ⚠️  NOTE: You must accept competition rules first at:")
+        print("   https://www.kaggle.com/c/ieee-fraud-detection/rules")
         os.makedirs(ieee_dir, exist_ok=True)
-        subprocess.run([
+        result = subprocess.run([
             'kaggle', 'competitions', 'download', '-c', DATASETS['ieee_fraud'],
             '-p', ieee_dir
-        ], check=False)
-        # Unzip
-        for f in os.listdir(ieee_dir):
-            if f.endswith('.zip'):
-                subprocess.run(['unzip', '-o', os.path.join(ieee_dir, f), '-d', ieee_dir],
-                              capture_output=True, check=False)
-        print("   ✅ IEEE-CIS downloaded")
+        ], check=False, capture_output=True, text=True)
+        if result.returncode != 0 or '401' in (result.stderr or ''):
+            print("   ⚠️  IEEE-CIS download failed (likely need to accept rules).")
+            print("   Pipeline will continue with PaySim + DataCo only.")
+        else:
+            # Unzip
+            for f in os.listdir(ieee_dir):
+                if f.endswith('.zip'):
+                    subprocess.run(['unzip', '-o', os.path.join(ieee_dir, f), '-d', ieee_dir],
+                                  capture_output=True, check=False)
+            print("   ✅ IEEE-CIS downloaded")
     else:
         print(f"   ⏭️ IEEE-CIS already exists at {ieee_dir}")
 
