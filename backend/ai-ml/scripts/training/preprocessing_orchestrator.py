@@ -113,7 +113,12 @@ def process_single_chunk(
             np.array(amounts, dtype=np.float32)
         ))
     else:
-        feats.update(extractor._signature_fallback(np.array(amounts)))
+        feats.update(extractor._signature_zeros())
+
+    # [I] Dataset-specific features (type distribution, amount ratios, etc.)
+    feats.update(extractor.extract_dataset_specific_features(
+        G, chunk_df, is_paysim=(dataset_type == 'paysim')
+    ))
 
     result.update(feats)
     return result

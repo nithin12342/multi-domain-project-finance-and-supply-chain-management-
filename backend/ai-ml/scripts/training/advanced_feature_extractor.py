@@ -4,14 +4,15 @@ SOPHISTICATED 100-FEATURE EXTRACTION ENGINE
 Categories:
   [A]  15 Baseline features (preserved from original pipeline)
   [B]  12 Extended centrality features
-  [C]  14 Spectral graph features (Laplacian eigenvalues, Fiedler)
+  [C]  13 Spectral graph features (Laplacian eigenvalues, Fiedler)
   [D]  12 TDA features (Betti numbers, persistence statistics)
   [E]  10 Community structure features
-  [F]  12 Temporal/velocity features (PaySim-specific)
-  [G]   8 Transaction pattern features (motif counts)
-  [H]   7 Rough path signature features (IoT/time-series)
+  [F]  11 Temporal/velocity features (PaySim-specific)
+  [G]   7 Transaction pattern features (motif counts)
+  [H]   7 Rough path signature features (pure NumPy iterated integrals)
+  [I]  13 Dataset-specific features (type distribution, amount ratios)
   ─────────────────────────────────────────────────────
-  Total: 90 core + 10 dataset-specific = 100 features
+  Total: 100 features
 """
 
 import networkx as nx
@@ -616,64 +617,183 @@ class AdvancedFeatureExtractor:
         return feats
 
     # ═══════════════════════════════════════════════════════════════════════
-    # [H] ROUGH PATH SIGNATURE FEATURES (7) — IoT/Time-Series
+    # [H] ROUGH PATH SIGNATURE FEATURES (7) — Pure NumPy Implementation
     # ═══════════════════════════════════════════════════════════════════════
     def extract_path_signature_features(
         self, time_series: np.ndarray, depth: int = 3
     ) -> Dict[str, float]:
         """
-        Rough Path Theory: The signature of a path captures all iterated
-        integrals and is a complete invariant of the path up to reparametrization.
-        
-        For financial time-series (amount sequence), depth-3 signatures give
-        a fixed 40-dimensional feature (for 2D path: time + amount).
-        
-        Reference: Chen's iterated integral identity.
+        Pure NumPy iterated integral computation for path signatures.
+        No external dependency (esig/roughpy) required.
+
+        Computes the signature of a 2D path (time, amount) up to given depth
+        using Chen's iterated integral formula directly.
+
+        For a 2D path, depth-3 signature has 2+4+8=14 components.
+        We summarize these into 7 statistics.
         """
-        feats = {}
-        if not HAS_ESIG or len(time_series) < 4:
-            return self._signature_fallback(time_series)
+        if len(time_series) < 4:
+            return self._signature_zeros()
 
         try:
             # Construct 2D path: (normalized_time, normalized_amount)
-            t = np.linspace(0, 1, len(time_series)).reshape(-1, 1)
-            a = ((time_series - time_series.mean()) /
-                 (time_series.std() + 1e-12)).reshape(-1, 1)
-            path_2d = np.hstack([t, a])  # shape: (T, 2)
+            n = len(time_series)
+            t = np.linspace(0, 1, n)
+            std = time_series.std()
+            a = (time_series - time_series.mean()) / (std + 1e-12)
+            
+            # Compute path increments
+            dt = np.diff(t)  # shape: (n-1,)
+            da = np.diff(a)  # shape: (n-1,)
 
-            # Compute log-signature (more compact than full signature)
-            log_sig = _esig_logsig_fn(path_2d, depth)
+            # Depth-1 signature: S^1, S^2 (integrals of dt, da)
+            sig_depth1 = np.array([np.sum(dt), np.sum(da)])  # 2 components
 
-            # Store summary statistics (log-sig can be large)
-            feats['log_sig_l2_norm']   = float(np.linalg.norm(log_sig))
-            feats['log_sig_l1_norm']   = float(np.sum(np.abs(log_sig)))
-            feats['log_sig_max']       = float(np.max(log_sig))
-            feats['log_sig_min']       = float(np.min(log_sig))
-            feats['log_sig_entropy']   = float(
-                stats.entropy(np.abs(log_sig) + 1e-12)
-            )
-            feats['log_sig_mean']      = float(np.mean(log_sig))
-            feats['log_sig_std']       = float(np.std(log_sig))
+            # Depth-2 signature: S^{ij} for i,j in {1,2}
+            # S^{ij} = Σ_{s<t} dX^i_s * dX^j_t  (iterated integral)
+            increments = np.stack([dt, da], axis=1)  # shape: (n-1, 2)
+            cumsum = np.cumsum(increments, axis=0)   # running integral
+            sig_depth2 = np.zeros(4)  # S^{11}, S^{12}, S^{21}, S^{22}
+            for k in range(len(increments)):
+                for i in range(2):
+                    for j in range(2):
+                        sig_depth2[i * 2 + j] += cumsum[k, i] * increments[k, j]
+
+            # Depth-3 signature: S^{ijk} (8 components for 2D)
+            sig_depth3 = np.zeros(8)
+            cumsum2 = np.zeros((2, 2))  # running depth-2 integral
+            for k in range(len(increments)):
+                for i in range(2):
+                    for j in range(2):
+                        for l in range(2):
+                            sig_depth3[i*4 + j*2 + l] += cumsum2[i, j] * increments[k, l]
+                # Update running depth-2 cumulative
+                for i in range(2):
+                    for j in range(2):
+                        cumsum2[i, j] += cumsum[k, i] * increments[k, j]
+
+            # Full signature: concatenate all depths (2 + 4 + 8 = 14 components)
+            full_sig = np.concatenate([sig_depth1, sig_depth2, sig_depth3])
+
+            # Log-signature approximation: log(1 + sig) component-wise
+            log_sig = np.sign(full_sig) * np.log1p(np.abs(full_sig))
+
+            return {
+                'log_sig_l2_norm':  float(np.linalg.norm(log_sig)),
+                'log_sig_l1_norm':  float(np.sum(np.abs(log_sig))),
+                'log_sig_max':      float(np.max(log_sig)),
+                'log_sig_min':      float(np.min(log_sig)),
+                'log_sig_entropy':  float(stats.entropy(np.abs(log_sig) + 1e-12)),
+                'log_sig_mean':     float(np.mean(log_sig)),
+                'log_sig_std':      float(np.std(log_sig)),
+            }
 
         except Exception as e:
             logger.warning(f"Signature extraction failed: {e}")
-            feats = self._signature_fallback(time_series)
+            return self._signature_zeros()
+
+    def _signature_zeros(self) -> Dict[str, float]:
+        """Zero fallback for signatures (only for very short series)."""
+        return {
+            'log_sig_l2_norm': 0.0, 'log_sig_l1_norm': 0.0,
+            'log_sig_max': 0.0, 'log_sig_min': 0.0,
+            'log_sig_entropy': 0.0, 'log_sig_mean': 0.0,
+            'log_sig_std': 0.0,
+        }
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # [I] DATASET-SPECIFIC FEATURES (13)
+    # ═══════════════════════════════════════════════════════════════════════
+    def extract_dataset_specific_features(
+        self, G: nx.DiGraph, chunk: pd.DataFrame, is_paysim: bool = True
+    ) -> Dict[str, float]:
+        """
+        Features derived from raw DataFrame columns, NOT graph structure.
+        These capture transaction-level patterns that graphs alone miss.
+        """
+        feats = {}
+
+        # ── Transaction Type Distribution (5) ─────────────────────────────
+        # PaySim has 5 transaction types. Their proportions are strong signals:
+        # Fraud concentrates in TRANSFER and CASH_OUT.
+        if is_paysim and 'type' in chunk.columns:
+            n_rows = len(chunk)
+            for tx_type in ['TRANSFER', 'CASH_OUT', 'PAYMENT', 'DEBIT', 'CASH_IN']:
+                col_name = f'type_ratio_{tx_type.lower()}'
+                feats[col_name] = float(
+                    (chunk['type'] == tx_type).sum() / n_rows
+                )
+        else:
+            for tx_type in ['transfer', 'cash_out', 'payment', 'debit', 'cash_in']:
+                feats[f'type_ratio_{tx_type}'] = 0.0
+
+        # ── Amount Quantile Ratios (3) ────────────────────────────────────
+        # Fraud transactions often have extreme amount distributions
+        amt_col = 'amount' if 'amount' in chunk.columns else 'TransactionAmt'
+        if amt_col in chunk.columns:
+            amounts = chunk[amt_col].fillna(0).values.astype(np.float32)
+            if len(amounts) > 0 and amounts.mean() > 0:
+                q25, q50, q75, q95 = np.percentile(amounts, [25, 50, 75, 95])
+                feats['amount_q95_q50_ratio'] = float(q95 / (q50 + 1e-12))
+                feats['amount_q75_q25_ratio'] = float(q75 / (q25 + 1e-12))
+                # Concentration: fraction of total amount from top 10% transactions
+                sorted_amt = np.sort(amounts)[::-1]
+                top_10_pct = max(1, len(sorted_amt) // 10)
+                feats['amount_concentration'] = float(
+                    sorted_amt[:top_10_pct].sum() / (sorted_amt.sum() + 1e-12)
+                )
+            else:
+                feats['amount_q95_q50_ratio'] = 0.0
+                feats['amount_q75_q25_ratio'] = 0.0
+                feats['amount_concentration'] = 0.0
+        else:
+            feats['amount_q95_q50_ratio'] = 0.0
+            feats['amount_q75_q25_ratio'] = 0.0
+            feats['amount_concentration'] = 0.0
+
+        # ── Degree Asymmetry (3) ──────────────────────────────────────────
+        # In fraud networks, some nodes receive many transfers but send few
+        n = G.number_of_nodes()
+        if n >= 3:
+            in_deg  = np.array([d for _, d in G.in_degree()], dtype=float)
+            out_deg = np.array([d for _, d in G.out_degree()], dtype=float)
+            # Asymmetry: difference between in and out degree
+            asymmetry = in_deg - out_deg
+            feats['degree_asymmetry_mean'] = float(np.mean(asymmetry))
+            feats['degree_asymmetry_max']  = float(np.max(np.abs(asymmetry)))
+            # Source-to-sink ratio: nodes with only outgoing vs only incoming
+            pure_sources = float(np.sum((out_deg > 0) & (in_deg == 0)))
+            pure_sinks   = float(np.sum((in_deg > 0) & (out_deg == 0)))
+            feats['source_sink_ratio'] = float(
+                pure_sources / (pure_sinks + 1e-12)
+            )
+        else:
+            feats['degree_asymmetry_mean'] = 0.0
+            feats['degree_asymmetry_max']  = 0.0
+            feats['source_sink_ratio']     = 0.0
+
+        # ── Graph Assortativity (2) ───────────────────────────────────────
+        # Assortative = high-degree connects to high-degree (normal commerce)
+        # Disassortative = high-degree connects to low-degree (hub-spoke fraud)
+        if n >= 5 and G.number_of_edges() >= 3:
+            try:
+                feats['degree_assortativity'] = float(
+                    nx.degree_assortativity_coefficient(G)
+                )
+            except Exception:
+                feats['degree_assortativity'] = 0.0
+            try:
+                # Weight assortativity: do high-weight edges connect similar nodes?
+                feats['weight_assortativity'] = float(
+                    nx.degree_pearson_correlation_coefficient(G, weight='weight')
+                )
+            except Exception:
+                feats['weight_assortativity'] = 0.0
+        else:
+            feats['degree_assortativity'] = 0.0
+            feats['weight_assortativity'] = 0.0
 
         return feats
-
-    def _signature_fallback(self, ts: np.ndarray) -> Dict[str, float]:
-        """Statistical fallback when esig not available."""
-        if len(ts) < 2:
-            ts = np.array([0.0, 0.0])
-        return {
-            'log_sig_l2_norm':  float(np.linalg.norm(ts)),
-            'log_sig_l1_norm':  float(np.sum(np.abs(ts))),
-            'log_sig_max':      float(np.max(ts)),
-            'log_sig_min':      float(np.min(ts)),
-            'log_sig_entropy':  float(stats.entropy(np.abs(ts) + 1e-12)),
-            'log_sig_mean':     float(np.mean(ts)),
-            'log_sig_std':      float(np.std(ts)),
-        }
 
     # ═══════════════════════════════════════════════════════════════════════
     # UTILITY METHODS
@@ -734,4 +854,13 @@ class AdvancedFeatureExtractor:
             'triangle_count','triangle_density','transitivity',
             'four_cycle_approx','bow_tie_node_count','bow_tie_node_fraction',
             'sink_node_fraction'
+        ]
+
+    def _dataset_specific_keys(self):
+        return [
+            'type_ratio_transfer','type_ratio_cash_out','type_ratio_payment',
+            'type_ratio_debit','type_ratio_cash_in',
+            'amount_q95_q50_ratio','amount_q75_q25_ratio','amount_concentration',
+            'degree_asymmetry_mean','degree_asymmetry_max','source_sink_ratio',
+            'degree_assortativity','weight_assortativity'
         ]
