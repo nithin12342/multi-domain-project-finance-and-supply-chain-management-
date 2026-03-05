@@ -149,3 +149,6 @@ docs/_build/
 # Kubernetes
 kubeconfig
 *.kubeconfig
+
+# Raw Kaggle datasets (too large for Git)
+backend/data/raw/
