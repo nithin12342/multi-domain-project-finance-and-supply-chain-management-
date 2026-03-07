@@ -303,7 +303,8 @@ class AdvancedFeatureExtractor:
                 data['distance'] = 1.0 / (data.get('weight', 1.0) + 1e-12)
 
             # Truncate to manageable size for TDA (Rips complex is O(n²))
-            max_nodes_tda = min(n, 200)
+            # 50 nodes is enough for topological structure; 200 hangs GUDHI
+            max_nodes_tda = min(n, 50)
             if n > max_nodes_tda:
                 # Sample by degree (keep high-degree fraud-ring nodes)
                 top_nodes = sorted(G.degree, key=lambda x: x[1],
@@ -776,19 +777,18 @@ class AdvancedFeatureExtractor:
         # Assortative = high-degree connects to high-degree (normal commerce)
         # Disassortative = high-degree connects to low-degree (hub-spoke fraud)
         if n >= 5 and G.number_of_edges() >= 3:
-            try:
-                feats['degree_assortativity'] = float(
-                    nx.degree_assortativity_coefficient(G)
-                )
-            except Exception:
-                feats['degree_assortativity'] = 0.0
-            try:
-                # Weight assortativity: do high-weight edges connect similar nodes?
-                feats['weight_assortativity'] = float(
-                    nx.degree_pearson_correlation_coefficient(G, weight='weight')
-                )
-            except Exception:
-                feats['weight_assortativity'] = 0.0
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', RuntimeWarning)
+                try:
+                    val = nx.degree_assortativity_coefficient(G)
+                    feats['degree_assortativity'] = 0.0 if np.isnan(val) else float(val)
+                except Exception:
+                    feats['degree_assortativity'] = 0.0
+                try:
+                    val = nx.degree_pearson_correlation_coefficient(G, weight='weight')
+                    feats['weight_assortativity'] = 0.0 if np.isnan(val) else float(val)
+                except Exception:
+                    feats['weight_assortativity'] = 0.0
         else:
             feats['degree_assortativity'] = 0.0
             feats['weight_assortativity'] = 0.0
